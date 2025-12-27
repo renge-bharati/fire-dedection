@@ -1,67 +1,93 @@
 import streamlit as st
-from ultralytics import YOLO
-import cv2
-import time
-import streamlit as st
 import numpy as np
-from PIL import Image
 import cv2
+from PIL import Image
 from ultralytics import YOLO
 
+# ------------------ PAGE CONFIG ------------------
+st.set_page_config(
+    page_title="🔥 Fire Detection App",
+    page_icon="🔥",
+    layout="centered"
+)
 
-st.set_page_config(page_title="Fire Detection", layout="centered")
+st.title("🔥 Fire Detection using YOLO")
+st.write("Upload an image to detect **fire** using a trained YOLO model.")
 
-st.title("🔥 Real-Time Fire Detection")
-st.markdown("Using a YOLO model to detect fire through your webcam.")
+# ------------------ LOAD MODEL ------------------
+@st.cache_resource
+def load_model():
+    return YOLO("best.pt")   # make sure best.pt is in repo root
 
-if 'model' not in st.session_state:
-    st.session_state.model = YOLO('best.pt')
+model = load_model()
 
-start_button = st.button("Start Detection")
+# ------------------ IMAGE UPLOAD ------------------
+uploaded_file = st.file_uploader(
+    "Upload an image",
+    type=["jpg", "jpeg", "png"]
+)
 
-if start_button:
-    stframe = st.empty()
-    cap = cv2.VideoCapture(0)
+if uploaded_file is not None:
+    # Read image
+    image = Image.open(uploaded_file).convert("RGB")
+    img_array = np.array(image)
 
-    stop_button = st.button("Stop Detection", key="stop_button")  # Unique key for stop button
-    fire_detected = False  # To track fire detection status
-    
-    # Create a progress bar
-    progress = st.progress(0)  # Initial progress bar value set to 0 (No fire)
+    st.image(image, caption="Uploaded Image", use_container_width=True)
 
-    fire_message = st.empty()  # To display the fire detection status message
+    st.write("🔍 Detecting fire...")
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            st.error("Failed to access webcam.")
-            break
+    # ------------------ YOLO INFERENCE ------------------
+    results = model.predict(
+        source=img_array,
+        conf=0.3,
+        save=False
+    )
 
-        results = st.session_state.model.predict(source=frame, imgsz=640, conf=0.6, verbose=False)
-        annotated_frame = results[0].plot()
+    # Draw results
+    annotated_img = img_array.copy()
 
-        # Check if fire is detected
-        fire_detected = False
-        for result in results[0].boxes.cls:
-            if result == 0:  # Assuming class 0 corresponds to 'fire' in your model
+    fire_detected = False
+
+    for r in results:
+        boxes = r.boxes
+        if boxes is not None:
+            for box in boxes:
                 fire_detected = True
-                break
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                conf = float(box.conf[0])
+                cls = int(box.cls[0])
+                label = f"Fire {conf:.2f}"
 
-        # Update progress bar and message based on detection status
-        if fire_detected:
-            progress.progress(100)  # Full progress bar indicates fire detected
-            fire_message.write("🔥 Fire Detected!")
-        else:
-            progress.progress(0)  # No progress bar means no fire detected
-            fire_message.write("No Fire Detected")
+                cv2.rectangle(
+                    annotated_img,
+                    (x1, y1),
+                    (x2, y2),
+                    (0, 0, 255),
+                    2
+                )
 
-        # Display the annotated frame with detection
-        stframe.image(annotated_frame, channels="BGR")
+                cv2.putText(
+                    annotated_img,
+                    label,
+                    (x1, y1 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 0, 255),
+                    2
+                )
 
-        # Check if the stop button is pressed and break the loop
-        if stop_button:
-            cap.release()
-            st.success("Detection stopped.")
-            break
+    # ------------------ SHOW RESULT ------------------
+    st.image(
+        annotated_img,
+        caption="Detection Result",
+        use_container_width=True
+    )
 
-        time.sleep(0.03)  # Add a small delay to manage resource usage
+    if fire_detected:
+        st.error("🔥 FIRE DETECTED!")
+    else:
+        st.success("✅ No fire detected.")
+
+# ------------------ FOOTER ------------------
+st.markdown("---")
+st.caption("🚀 YOLO Fire Detection | Streamlit App")
