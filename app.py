@@ -2,6 +2,12 @@ import streamlit as st
 from ultralytics import YOLO
 import cv2
 import time
+import streamlit as st
+import numpy as np
+from PIL import Image
+import cv2
+from ultralytics import YOLO
+
 
 st.set_page_config(page_title="Fire Detection", layout="centered")
 
